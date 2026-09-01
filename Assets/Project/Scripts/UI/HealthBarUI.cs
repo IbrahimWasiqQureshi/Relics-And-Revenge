@@ -7,7 +7,7 @@ public class HealthBarUI : MonoBehaviour
     [SerializeField] private Slider slider;
     [SerializeField] private Image fillImage;
     [SerializeField] private Gradient gradient;
-    [SerializeField] private float smoothSpeed = 8f;
+    private float smoothSpeed = 1.8f;
     [SerializeField] private CanvasGroup canvasGroup;
     private Coroutine hideCoroutine;
     [SerializeField] private float hideDelay = 5f;
