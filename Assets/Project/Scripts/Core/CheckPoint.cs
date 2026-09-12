@@ -12,16 +12,24 @@ public class Checkpoint : MonoBehaviour
         if (!other.CompareTag("Player"))
             return;
 
-        ActivateCheckpoint();
+        ActivateCheckpoint(other);
     }
 
-    private void ActivateCheckpoint()
+    private void ActivateCheckpoint(Collider player)
     {
         isActivated = true;
 
         if (CheckpointManager.Instance != null)
         {
             CheckpointManager.Instance.SetCheckpoint(respawnPoint);
+        }
+
+        HealingFlaskSystem flaskSystem =
+            player.GetComponent<HealingFlaskSystem>();
+
+        if (flaskSystem != null)
+        {
+            flaskSystem.RefillFlask();
         }
 
         Debug.Log("Checkpoint Activated");

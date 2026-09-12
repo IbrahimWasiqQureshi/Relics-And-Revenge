@@ -1,6 +1,7 @@
-﻿using System.Collections;
+using System.Collections;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using Unity.Cinemachine;
 
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
@@ -37,6 +38,26 @@ namespace StarterAssets
         [Header("Lock-On Movement")]
 
         public float LockOnRotationSpeed = 12f;
+
+        [Tooltip("How quickly the player's animator blend (MoveX/MoveY) reacts to strafe input changes. Higher = snappier, lower = smoother.")]
+        public float LockOnAnimationDampTime = 0.15f;
+
+        [Tooltip("How quickly the camera swings to frame the locked-on target.")]
+        public float LockOnCameraSpeed = 6f;
+
+        [Tooltip("Extra downward pitch (degrees) applied while locked on, so the camera doesn't stare straight at the target's head.")]
+        public float LockOnPitchOffset = 5f;
+
+        [Tooltip("Extra horizontal yaw (degrees) added while locked on. Positive = right, negative = left.")]
+        public float LockOnYawOffset = 0f;
+
+        [Header("Lock-On Camera Position")]
+
+        public float LockOnCameraDistance = 3.5f;
+
+        public float LockOnVerticalArmLength = 0.3f;
+
+        public float LockOnShoulderOffsetX = 0.5f;
 
 
         // =========================================================
@@ -91,6 +112,8 @@ namespace StarterAssets
 
         public GameObject CinemachineCameraTarget;
 
+        public GameObject PlayerFollowCamera;
+
         public float TopClamp = 70.0f;
 
         public float BottomClamp = -30.0f;
@@ -107,6 +130,14 @@ namespace StarterAssets
         private float _cinemachineTargetYaw;
 
         private float _cinemachineTargetPitch;
+
+        private Cinemachine3rdPersonFollow _thirdPersonFollow;
+
+        private float _normalCameraDistance;
+
+        private float _normalVerticalArmLength;
+
+        private Vector3 _normalShoulderOffset;
 
 
         // =========================================================
@@ -174,7 +205,10 @@ namespace StarterAssets
 
         private PlayerController playerController;
 
-        private LockOnManager lockOnManager;
+        
+
+        private Coroutine _dodgeCoroutine;
+private LockOnManager lockOnManager;
 
 
         // =========================================================
@@ -241,6 +275,19 @@ namespace StarterAssets
                 .eulerAngles
                 .y;
 
+            if (PlayerFollowCamera != null)
+            {
+                _thirdPersonFollow =
+                    PlayerFollowCamera.GetComponentInChildren<Cinemachine3rdPersonFollow>();
+            }
+
+            if (_thirdPersonFollow != null)
+            {
+                _normalCameraDistance = _thirdPersonFollow.CameraDistance;
+                _normalVerticalArmLength = _thirdPersonFollow.VerticalArmLength;
+                _normalShoulderOffset = _thirdPersonFollow.ShoulderOffset;
+            }
+
             _hasAnimator =
                 TryGetComponent(out _animator);
 
@@ -273,7 +320,7 @@ namespace StarterAssets
         // UPDATE
         // =========================================================
 
-        private void Update()
+private void Update()
         {
             _hasAnimator =
                 TryGetComponent(out _animator);
@@ -284,9 +331,17 @@ namespace StarterAssets
                     FindObjectOfType<LockOnManager>();
             }
 
-            JumpAndGravity();
-
+            // NOTE: GroundedCheck() must run before JumpAndGravity(),
+            // since JumpAndGravity() reads the Grounded flag. It was
+            // previously called after, so JumpAndGravity() was always
+            // acting on last frame's grounded state - a stale read
+            // that could let gravity silently accumulate for a frame
+            // here and there (most noticeable during the fast lateral
+            // movement of a dodge roll, causing the falling/stuck
+            // feeling).
             GroundedCheck();
+
+            JumpAndGravity();
 
             Move();
         }
@@ -381,8 +436,19 @@ namespace StarterAssets
         // CAMERA ROTATION
         // =========================================================
 
-        private void CameraRotation()
+private void CameraRotation()
         {
+            if (IsLockedOn())
+            {
+                UpdateCameraPosition(true);
+
+                LockOnCameraRotation();
+
+                return;
+            }
+
+            UpdateCameraPosition(false);
+
             if (_input.look.sqrMagnitude >= _threshold &&
                 !LockCameraPosition)
             {
@@ -410,6 +476,129 @@ namespace StarterAssets
             _cinemachineTargetPitch =
                 ClampAngle(
                     _cinemachineTargetPitch,
+                    BottomClamp,
+                    TopClamp
+                );
+
+            CinemachineCameraTarget.transform.rotation =
+                Quaternion.Euler(
+                    _cinemachineTargetPitch +
+                    CameraAngleOverride,
+                    _cinemachineTargetYaw,
+                    0.0f
+                );
+        }
+
+
+        // =========================================================
+        // LOCK-ON CAMERA
+        //
+        // Souls-style: while locked on, the camera automatically
+        // swings to keep the target framed instead of relying on
+        // free-look input. Yaw points from the pivot toward the
+        // target; pitch follows the target's height (plus a small
+        // downward bias) so both player and enemy stay in view.
+        // =========================================================
+
+        private void UpdateCameraPosition(bool lockedOn)
+        {
+            if (_thirdPersonFollow == null)
+                return;
+
+            float t =
+                1f -
+                Mathf.Exp(
+                    -LockOnCameraSpeed *
+                    Time.deltaTime
+                );
+
+            float targetDistance =
+                lockedOn ? LockOnCameraDistance : _normalCameraDistance;
+
+            float targetArmLength =
+                lockedOn ? LockOnVerticalArmLength : _normalVerticalArmLength;
+
+            Vector3 targetShoulderOffset =
+                lockedOn
+                    ? new Vector3(LockOnShoulderOffsetX, _normalShoulderOffset.y, _normalShoulderOffset.z)
+                    : _normalShoulderOffset;
+
+            _thirdPersonFollow.CameraDistance =
+                Mathf.Lerp(_thirdPersonFollow.CameraDistance, targetDistance, t);
+
+            _thirdPersonFollow.VerticalArmLength =
+                Mathf.Lerp(_thirdPersonFollow.VerticalArmLength, targetArmLength, t);
+
+            _thirdPersonFollow.ShoulderOffset =
+                Vector3.Lerp(_thirdPersonFollow.ShoulderOffset, targetShoulderOffset, t);
+        }
+
+
+private void LockOnCameraRotation()
+        {
+            // Camera yaw still swings to face the target so the enemy
+            // stays framed horizontally, but pitch is held at a fixed
+            // offset (LockOnPitchOffset, set in the Inspector) instead
+            // of being recalculated from the target's height/distance.
+            // That height-based calculation was the cause of the
+            // camera tilting upward as the player closed the distance
+            // to the target (smaller horizontal distance -> steeper
+            // angle needed to "aim" at the target's exact position).
+
+            float desiredYaw =
+                transform.eulerAngles.y + LockOnYawOffset;
+
+            float desiredPitch =
+                -LockOnPitchOffset;
+
+            if (lockOnManager != null &&
+                lockOnManager.currentTarget != null &&
+                CinemachineCameraTarget != null)
+            {
+                Transform targetPoint =
+                    lockOnManager.currentTarget.targetPoint != null
+                        ? lockOnManager.currentTarget.targetPoint
+                        : lockOnManager.currentTarget.transform;
+
+                Vector3 pivotPosition =
+                    CinemachineCameraTarget.transform.position;
+
+                Vector3 toTarget =
+                    targetPoint.position - pivotPosition;
+
+                float horizontalDistance =
+                    new Vector3(toTarget.x, 0f, toTarget.z).magnitude;
+
+                if (horizontalDistance > 0.001f)
+                {
+                    desiredYaw =
+                        Mathf.Atan2(toTarget.x, toTarget.z) *
+                        Mathf.Rad2Deg +
+                        LockOnYawOffset;
+                }
+            }
+
+            float lerpFactor =
+                1f -
+                Mathf.Exp(
+                    -LockOnCameraSpeed *
+                    Time.deltaTime
+                );
+
+            _cinemachineTargetYaw =
+                Mathf.LerpAngle(
+                    _cinemachineTargetYaw,
+                    desiredYaw,
+                    lerpFactor
+                );
+
+            _cinemachineTargetPitch =
+                Mathf.Clamp(
+                    Mathf.LerpAngle(
+                        _cinemachineTargetPitch,
+                        desiredPitch,
+                        lerpFactor
+                    ),
                     BottomClamp,
                     TopClamp
                 );
@@ -712,8 +901,10 @@ namespace StarterAssets
         // Player keeps whatever direction he is currently facing.
         // =========================================================
 
-        private void MoveWhileLockedOn()
+private void MoveWhileLockedOn()
         {
+            RotateTowardsLockOnTarget();
+
             float horizontal =
                 _input.move.x;
 
@@ -808,6 +999,12 @@ namespace StarterAssets
 
             // -----------------------------------------------------
             // LOCK-ON ANIMATOR
+            //
+            // MoveX/MoveY feed a 2D freeform blend tree, so raw
+            // input snaps the blend instantly between clips.
+            // Damping them here gives smooth directional blending
+            // (souls-style) instead of jump-cutting between
+            // strafe animations.
             // -----------------------------------------------------
 
             if (_hasAnimator)
@@ -824,7 +1021,9 @@ namespace StarterAssets
 
                 _animator.SetFloat(
                     _animIDMoveX,
-                    horizontal
+                    horizontal,
+                    LockOnAnimationDampTime,
+                    Time.deltaTime
                 );
 
 
@@ -834,7 +1033,9 @@ namespace StarterAssets
 
                 _animator.SetFloat(
                     _animIDMoveY,
-                    vertical
+                    vertical,
+                    LockOnAnimationDampTime,
+                    Time.deltaTime
                 );
 
 
@@ -869,6 +1070,60 @@ namespace StarterAssets
                 finalMovement
             );
         }
+
+
+        // =========================================================
+        // ROTATE TOWARDS LOCK-ON TARGET
+        //
+        // Souls-style: the player always faces the locked target
+        // (yaw only) so strafing left/right/back reads correctly
+        // against the directional blend tree. Uses framerate-
+        // independent exponential smoothing for a natural turn
+        // instead of an instant snap.
+        // =========================================================
+
+        private void RotateTowardsLockOnTarget()
+        {
+            if (!IsLockedOn())
+                return;
+
+            LockOnTarget currentTarget =
+                lockOnManager.currentTarget;
+
+            Transform targetPoint =
+                currentTarget.targetPoint != null
+                    ? currentTarget.targetPoint
+                    : currentTarget.transform;
+
+            Vector3 direction =
+                targetPoint.position -
+                transform.position;
+
+            direction.y = 0f;
+
+            if (direction.sqrMagnitude < 0.0001f)
+                return;
+
+            Quaternion targetRotation =
+                Quaternion.LookRotation(
+                    direction.normalized
+                );
+
+            float lerpFactor =
+                1f -
+                Mathf.Exp(
+                    -LockOnRotationSpeed *
+                    Time.deltaTime
+                );
+
+            transform.rotation =
+                Quaternion.Slerp(
+                    transform.rotation,
+                    targetRotation,
+                    lerpFactor
+                );
+        }
+
 
 
         // =========================================================
@@ -973,22 +1228,48 @@ namespace StarterAssets
         // DODGE
         // =========================================================
 
-        public void PerformDodge(
+public void PerformDodge(
             Vector3 direction,
             float distance,
             float duration)
         {
-            StartCoroutine(
-                DodgeMovement(
-                    direction,
-                    distance,
-                    duration
-                )
-            );
+            if (_dodgeCoroutine != null)
+            {
+                StopCoroutine(_dodgeCoroutine);
+            }
+
+            _dodgeCoroutine =
+                StartCoroutine(
+                    DodgeMovement(
+                        direction,
+                        distance,
+                        duration
+                    )
+                );
         }
 
 
-        private IEnumerator DodgeMovement(
+        // =========================================================
+        // STOP DODGE
+        //
+        // Called when the roll is interrupted early (e.g. the
+        // player gets hit mid-roll and PlayerController cancels
+        // action states). Prevents the coroutine from continuing
+        // to slide the character after control has been taken
+        // away from it.
+        // =========================================================
+
+        public void StopDodge()
+        {
+            if (_dodgeCoroutine != null)
+            {
+                StopCoroutine(_dodgeCoroutine);
+                _dodgeCoroutine = null;
+            }
+        }
+
+
+private IEnumerator DodgeMovement(
             Vector3 direction,
             float distance,
             float duration)
@@ -1000,16 +1281,48 @@ namespace StarterAssets
                 direction.normalized;
 
 
-            while (elapsed < duration)
+            // Keep rolling only while isDodging is still true and
+            // we're inside the intended window - if PlayerController
+            // cancels the roll early (e.g. got hit), this coroutine
+            // is also stopped directly via StopDodge(), but the
+            // isDodging check is a second safety net.
+            while (elapsed < duration &&
+                   playerController != null &&
+                   playerController.isDodging)
             {
                 float speed =
                     distance / duration;
 
 
-                _controller.Move(
+                Vector3 horizontalMove =
                     dodgeDirection *
                     speed *
-                    Time.deltaTime
+                    Time.deltaTime;
+
+
+                // Dodging only ever starts while Grounded (gated in
+                // PlayerController.Dodge()), and it's a ground roll,
+                // not a jump - so while grounded we stick to the
+                // floor with the same small constant value
+                // JumpAndGravity() uses (-2f), instead of trusting
+                // the accumulated _verticalVelocity outright.
+                // If we do end up airborne mid-roll (e.g. rolling
+                // off a ledge), fall back to the real vertical
+                // velocity so the player still falls naturally.
+                float verticalSpeed =
+                    Grounded
+                        ? -2f
+                        : _verticalVelocity;
+
+                Vector3 verticalMove =
+                    Vector3.up *
+                    verticalSpeed *
+                    Time.deltaTime;
+
+
+                _controller.Move(
+                    horizontalMove +
+                    verticalMove
                 );
 
 
@@ -1019,6 +1332,32 @@ namespace StarterAssets
 
                 yield return null;
             }
+
+
+            // =====================================================
+            // HAND CONTROL BACK IMMEDIATELY
+            //
+            // The "Standing Dive Forward" clip has its own
+            // ResetDodge() animation event baked in near the very
+            // end (~1s in), well after the roll's actual translation
+            // (this duration, ~0.7s) and even after the Animator's
+            // own exit transition out of the dive state (~0.75s).
+            // Waiting for that event left isDodging (and therefore
+            // all movement/input) locked for an extra ~0.3-0.5s
+            // after the character had already stopped moving -
+            // which is what read as the player getting stuck/
+            // sinking after the roll. Resetting it here as soon as
+            // this coroutine's own roll duration completes keeps
+            // control handed back in sync with the movement instead.
+            // The animation event still fires later too, but that's
+            // harmless - isDodging is already false by then.
+            if (playerController != null)
+            {
+                playerController.ResetDodge();
+            }
+
+
+            _dodgeCoroutine = null;
         }
 
 
