@@ -24,6 +24,9 @@ public class PlayerHealth : MonoBehaviour, IDamageable
     private StarterAssets.ThirdPersonController thirdPersonController;
     private CharacterController characterController;
 
+    // Healing system
+    private HealingFlaskSystem healingFlaskSystem;
+
     private void Awake()
     {
         currentHealth = maxHealth;
@@ -32,6 +35,8 @@ public class PlayerHealth : MonoBehaviour, IDamageable
         playerController = GetComponent<PlayerController>();
         thirdPersonController = GetComponent<StarterAssets.ThirdPersonController>();
         characterController = GetComponent<CharacterController>();
+
+        healingFlaskSystem = GetComponent<HealingFlaskSystem>();
     }
 
     private void Start()
@@ -40,12 +45,19 @@ public class PlayerHealth : MonoBehaviour, IDamageable
         healthBar.SetHealth(currentHealth);
     }
 
+    // =========================================================
+    // DAMAGE
+    // =========================================================
+
     public void TakeDamage(int damage)
     {
         if (isDead || isInvincible)
             return;
 
-        // Blocking
+        // =====================================================
+        // BLOCKING
+        // =====================================================
+
         if (playerController != null &&
             playerController.isBlocking &&
             ShieldBlock.IsBlocking)
@@ -54,6 +66,20 @@ public class PlayerHealth : MonoBehaviour, IDamageable
             return;
         }
 
+        // =====================================================
+        // INTERRUPT HEALING
+        // =====================================================
+
+        // If the player is drinking, getting hit cancels it.
+        if (healingFlaskSystem != null)
+        {
+            healingFlaskSystem.InterruptHealing();
+        }
+
+        // =====================================================
+        // APPLY DAMAGE
+        // =====================================================
+
         currentHealth -= damage;
         currentHealth = Mathf.Max(currentHealth, 0);
 
@@ -61,34 +87,81 @@ public class PlayerHealth : MonoBehaviour, IDamageable
 
         Debug.Log("Player HP: " + currentHealth);
 
-        // Player died
+        // =====================================================
+        // DEATH
+        // =====================================================
+
         if (currentHealth <= 0)
         {
             Die();
             return;
         }
 
-        // Hit animation
-        if (playerController == null || !playerController.isBlocking)
-        {
-            // Cancel any in-progress action (equip/attack) so a hit can never
-            // leave the player permanently stuck if it interrupts that animation
-            // before its "finished" animation event has a chance to fire.
-            if (playerController != null)
-                playerController.CancelActionStates();
+        // =====================================================
+        // HIT ANIMATION
+        // =====================================================
 
+        if (playerController != null)
+            playerController.CancelActionStates();
+
+        if (animator != null)
+        {
+            // Make sure healing animation trigger is not waiting
+            animator.ResetTrigger("DrinkPotion");
+
+            // Play hit animation
             animator.ResetTrigger("Hit");
             animator.SetTrigger("Hit");
         }
 
-        // Temporary invincibility after being hit
+        // =====================================================
+        // TEMPORARY INVINCIBILITY
+        // =====================================================
+
         StartCoroutine(InvincibilityFrames());
     }
+
+    // =========================================================
+    // HEALING
+    // =========================================================
+
+    public void Heal(int amount)
+    {
+        if (isDead)
+            return;
+
+        currentHealth += amount;
+        currentHealth = Mathf.Min(currentHealth, maxHealth);
+
+        healthBar.SetHealth(currentHealth);
+
+        Debug.Log("Player healed. HP: " + currentHealth);
+    }
+
+    public bool IsFullHealth()
+    {
+        return currentHealth >= maxHealth;
+    }
+
+    public bool IsDead()
+    {
+        return isDead;
+    }
+
+    // =========================================================
+    // DEATH
+    // =========================================================
 
     private void Die()
     {
         if (isDead)
             return;
+
+        // Make absolutely sure healing is cancelled on death
+        if (healingFlaskSystem != null)
+        {
+            healingFlaskSystem.InterruptHealing();
+        }
 
         isDead = true;
         isInvincible = true;
@@ -112,7 +185,6 @@ public class PlayerHealth : MonoBehaviour, IDamageable
 
     private IEnumerator RespawnAfterDeath()
     {
-        // Give the death animation time to play
         yield return new WaitForSeconds(2f);
 
         if (CheckpointManager.Instance != null)
@@ -137,6 +209,9 @@ public class PlayerHealth : MonoBehaviour, IDamageable
 
         // Reset animation system
         animator.ResetTrigger("Death");
+        animator.ResetTrigger("Hit");
+        animator.ResetTrigger("DrinkPotion");
+
         animator.applyRootMotion = false;
         animator.Rebind();
         animator.Update(0f);
@@ -152,8 +227,16 @@ public class PlayerHealth : MonoBehaviour, IDamageable
         if (thirdPersonController != null)
             thirdPersonController.enabled = true;
 
+        // Refill healing flask
+        if (healingFlaskSystem != null)
+            healingFlaskSystem.RefillFlask();
+
         Debug.Log("Player respawned at checkpoint.");
     }
+
+    // =========================================================
+    // INVINCIBILITY
+    // =========================================================
 
     private IEnumerator InvincibilityFrames()
     {

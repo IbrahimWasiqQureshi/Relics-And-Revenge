@@ -69,7 +69,10 @@ public class PlayerController : MonoBehaviour
     // DODGE
     // =========================================================
 
-    public bool isDodging;
+    
+
+    private LockOnManager lockOnManager;
+public bool isDodging;
 
 
     // =========================================================
@@ -235,7 +238,7 @@ public class PlayerController : MonoBehaviour
     // DODGE
     // =========================================================
 
-    private void Dodge()
+private void Dodge()
     {
         if (Input.GetKeyDown(KeyCode.LeftAlt) &&
             playerAnim.GetBool("Grounded"))
@@ -249,20 +252,91 @@ public class PlayerController : MonoBehaviour
                 return;
             }
 
-            Vector3 dodgeDirection = Vector3.zero;
+            if (lockOnManager == null)
+            {
+                lockOnManager = FindObjectOfType<LockOnManager>();
+            }
 
-            if (Input.GetKey(KeyCode.D))
-            {
-                dodgeDirection = transform.right;
-            }
-            else if (Input.GetKey(KeyCode.A))
-            {
-                dodgeDirection = -transform.right;
-            }
-            else
+            // =================================================
+            // LOCK-ON ONLY
+            //
+            // Dodge rolling is only available while locked onto
+            // an enemy - no free-roam dodge.
+            // =================================================
+
+            if (lockOnManager == null ||
+                !lockOnManager.IsLockedOn ||
+                lockOnManager.currentTarget == null)
             {
                 return;
             }
+
+            if (!Input.GetKey(KeyCode.D) &&
+                !Input.GetKey(KeyCode.A))
+            {
+                return;
+            }
+
+            // =================================================
+            // TANGENT AROUND THE TARGET
+            //
+            // Instead of dodging relative to whichever way the
+            // player happens to be facing (transform.right), the
+            // direction is derived fresh from the vector to the
+            // locked target. This guarantees "D" always dodges
+            // to the same side around the enemy and "A" always
+            // dodges to the other side, no matter the player's
+            // current facing - and it keeps the roll moving along
+            // the enemy's circle of rotation (a strafe around the
+            // target) rather than in an arbitrary straight line.
+            // =================================================
+
+            Transform targetPoint =
+                lockOnManager.currentTarget.targetPoint != null
+                    ? lockOnManager.currentTarget.targetPoint
+                    : lockOnManager.currentTarget.transform;
+
+            Vector3 toTarget =
+                targetPoint.position -
+                transform.position;
+
+            toTarget.y = 0f;
+
+            if (toTarget.sqrMagnitude < 0.0001f)
+                return;
+
+            toTarget.Normalize();
+
+            Vector3 tangentRight =
+                Vector3.Cross(
+                    Vector3.up,
+                    toTarget
+                ).normalized;
+
+            Vector3 dodgeDirection =
+                Input.GetKey(KeyCode.D)
+                    ? tangentRight
+                    : -tangentRight;
+
+            // =================================================
+            // FACE THE ROLL DIRECTION
+            //
+            // Souls-style: snap to face the direction we're about
+            // to dive into. "Standing Dive Forward" is a forward
+            // roll animation, so the character needs to be facing
+            // dodgeDirection for the dive to read correctly.
+            //
+            // RotateTowardsLockOnTarget() takes over again as soon
+            // as isDodging clears and smoothly turns the player
+            // back to face the target - so this rotation is only
+            // ever temporary.
+            // =================================================
+
+            transform.rotation =
+                Quaternion.LookRotation(
+                    dodgeDirection,
+                    Vector3.up
+                );
 
             isDodging = true;
 
@@ -275,8 +349,8 @@ public class PlayerController : MonoBehaviour
             {
                 movement.PerformDodge(
                     dodgeDirection,
-                    2.5f,
-                    0.35f
+                    3.0f,
+                    0.7f
                 );
             }
         }
@@ -297,10 +371,22 @@ public class PlayerController : MonoBehaviour
     // CANCEL ACTIONS WHEN HIT
     // =========================================================
 
-    public void CancelActionStates()
+public void CancelActionStates()
     {
         isEquipping = false;
         isAttacking = false;
+
+        if (isDodging)
+        {
+            ThirdPersonController movement =
+                GetComponent<ThirdPersonController>();
+
+            if (movement != null)
+            {
+                movement.StopDodge();
+            }
+        }
+
         isDodging = false;
     }
 

@@ -63,8 +63,6 @@ public class LockOnManager : MonoBehaviour
 
         HandleLockOn();
 
-        UpdateLockOnMovement();
-
         CheckCurrentTarget();
     }
 
@@ -521,39 +519,7 @@ public class LockOnManager : MonoBehaviour
     // LOCK-ON MOVEMENT
     // =========================================================
 
-    private void UpdateLockOnMovement()
-    {
-        if (!IsLockedOn)
-            return;
 
-
-        if (playerAnimator == null)
-            return;
-
-
-        float horizontal =
-            Input.GetAxisRaw(
-                "Horizontal"
-            );
-
-
-        float vertical =
-            Input.GetAxisRaw(
-                "Vertical"
-            );
-
-
-        playerAnimator.SetFloat(
-            "MoveX",
-            horizontal
-        );
-
-
-        playerAnimator.SetFloat(
-            "MoveY",
-            vertical
-        );
-    }
 
 
     // =========================================================
