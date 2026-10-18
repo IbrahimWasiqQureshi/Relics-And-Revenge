@@ -42,14 +42,21 @@ public class EnemyHealth : MonoBehaviour, IDamageable
         Debug.Log(gameObject.name + " HP : " + currentHealth);
 
         if (healthBar != null)
+            if (healthBar != null)
+        {
             healthBar.ShowBar();
             healthBar.SetHealth(currentHealth);
+        }
 
         EnemyAI ai = GetComponent<EnemyAI>();
 
         if (ai != null)
         {
             ai.InterruptAttack();
+
+            // Start the knockback + hit reaction. This call was missing, so knockback never ran.
+            if (currentHealth > 0)
+                ai.TakeHit();
         }
 
         if (currentHealth > 0)

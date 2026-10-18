@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
@@ -98,6 +99,10 @@ public class BossController : MonoBehaviour
 
     [SerializeField] private float hitReactionDuration = 0.6f;
 
+    [SerializeField] private float knockbackDistance = 0.8f;
+
+    [SerializeField] private float knockbackDuration = 0.2f;
+
     [SerializeField] private float runAttackDuration = 4f;
 
     [Tooltip("How long into the Run Attack the boss keeps physically closing distance, before planting for the strike/recovery. Should match when the sword actually hits the ground in the clip - shorter than Run Attack Duration.")]
@@ -166,6 +171,8 @@ public class BossController : MonoBehaviour
     private Vector3 originalPosition;
 
     private bool recoveringFromBlock;
+
+    private Coroutine knockbackCoroutine;
 
 
     // =========================================================
@@ -1214,6 +1221,57 @@ public class BossController : MonoBehaviour
         SafeSetTrigger(
             paramNames.hitTrigger
         );
+
+
+        if (knockbackCoroutine != null)
+            StopCoroutine(knockbackCoroutine);
+
+        knockbackCoroutine = StartCoroutine(KnockbackRoutine());
+    }
+
+
+    // =========================================================
+    // KNOCKBACK
+    // =========================================================
+
+    private IEnumerator KnockbackRoutine()
+    {
+        if (player != null)
+        {
+            Vector3 toPlayer = player.position - transform.position;
+            toPlayer.y = 0f;
+
+            if (toPlayer.sqrMagnitude > 0.001f)
+                transform.rotation = Quaternion.LookRotation(toPlayer);
+        }
+
+        Vector3 startPosition = transform.position;
+        Vector3 targetPosition =
+            startPosition - transform.forward * knockbackDistance;
+
+        float elapsed = 0f;
+
+        while (elapsed < knockbackDuration && state == BossState.Hit)
+        {
+            elapsed += Time.deltaTime;
+
+            float t = Mathf.Clamp01(elapsed / knockbackDuration);
+
+            Vector3 nextPosition = Vector3.Lerp(
+                startPosition,
+                targetPosition,
+                t
+            );
+
+            if (agent != null && agent.enabled && agent.isOnNavMesh)
+                agent.Move(nextPosition - transform.position);
+            else
+                transform.position = nextPosition;
+
+            yield return null;
+        }
+
+        knockbackCoroutine = null;
     }
 
 

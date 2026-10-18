@@ -14,12 +14,23 @@ public class LockOnManager : MonoBehaviour
     public float maxLockDistance = 20f;
 
     [Header("Target Selection")]
-    public KeyCode previousTargetKey = KeyCode.Q;
-    public KeyCode nextTargetKey = KeyCode.E;
+    [Range(1f, 30f)]
+    public float aimAngle = 10f;
+    public LayerMask aimLayers = ~0;
     public KeyCode lockOnKey = KeyCode.Tab;
 
     [Header("Target Dot")]
     public GameObject targetDotPrefab;
+
+    [Header("Target Outline")]
+    [Tooltip("White outline on the selected enemy, red once locked on.")]
+    public bool useOutline = true;
+
+    private Dictionary<LockOnTarget, LockOnOutline> outlines =
+        new Dictionary<LockOnTarget, LockOnOutline>();
+
+    private List<LockOnTarget> outlineScratch =
+        new List<LockOnTarget>();
 
     [Range(0f, 0.5f)]
     public float screenEdgePadding = 0.05f;
@@ -64,6 +75,8 @@ public class LockOnManager : MonoBehaviour
         HandleLockOn();
 
         CheckCurrentTarget();
+
+        UpdateOutlines();
     }
 
 
@@ -347,76 +360,78 @@ public class LockOnManager : MonoBehaviour
 
     private void HandleTargetSelection()
     {
-        if (visibleTargets.Count == 0)
+        if (IsLockedOn)
             return;
 
-
-        if (Input.GetKeyDown(
-            nextTargetKey))
-        {
-            SelectNextTarget();
-        }
-
-
-        if (Input.GetKeyDown(
-            previousTargetKey))
-        {
-            SelectPreviousTarget();
-        }
+        currentTarget = GetAimedTarget();
     }
 
-
-    // =========================================================
-    // NEXT TARGET
-    // =========================================================
-
-    private void SelectNextTarget()
+    private LockOnTarget GetAimedTarget()
     {
-        if (visibleTargets.Count == 0)
-            return;
+        Transform cam = playerCamera.transform;
 
+        LockOnTarget best = null;
+        float bestAngle = aimAngle;
 
-        selectedTargetIndex++;
-
-
-        if (selectedTargetIndex >=
-            visibleTargets.Count)
+        foreach (LockOnTarget target in visibleTargets)
         {
-            selectedTargetIndex = 0;
+            if (target == null)
+                continue;
+
+            Transform point = target.targetPoint != null
+                ? target.targetPoint
+                : target.transform;
+
+            float angle = Vector3.Angle(
+                cam.forward,
+                point.position - cam.position
+            );
+
+            if (angle > bestAngle)
+                continue;
+
+            if (!HasClearView(target, point.position))
+                continue;
+
+            best = target;
+            bestAngle = angle;
         }
 
-
-        currentTarget =
-            visibleTargets[
-                selectedTargetIndex
-            ];
+        return best;
     }
 
-
-    // =========================================================
-    // PREVIOUS TARGET
-    // =========================================================
-
-    private void SelectPreviousTarget()
+    private bool HasClearView(LockOnTarget target, Vector3 targetPosition)
     {
-        if (visibleTargets.Count == 0)
-            return;
+        Vector3 origin = playerCamera.transform.position;
+        Vector3 toTarget = targetPosition - origin;
 
+        float ignoreDistance =
+            Vector3.Distance(origin, player.position) + 1f;
 
-        selectedTargetIndex--;
+        RaycastHit[] hits = Physics.RaycastAll(
+            origin,
+            toTarget.normalized,
+            toTarget.magnitude,
+            aimLayers,
+            QueryTriggerInteraction.Ignore
+        );
 
+        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
 
-        if (selectedTargetIndex < 0)
+        foreach (RaycastHit hit in hits)
         {
-            selectedTargetIndex =
-                visibleTargets.Count - 1;
+            if (hit.distance < ignoreDistance)
+                continue;
+
+            if (hit.transform.IsChildOf(player.root))
+                continue;
+
+            LockOnTarget hitTarget = hit.collider.GetComponentInParent<LockOnTarget>();
+
+            return hitTarget == target;
         }
 
-
-        currentTarget =
-            visibleTargets[
-                selectedTargetIndex
-            ];
+        return true;
     }
 
 
@@ -442,17 +457,7 @@ public class LockOnManager : MonoBehaviour
         {
             LockOn(currentTarget);
         }
-        else if (visibleTargets.Count > 0)
-        {
-            selectedTargetIndex = 0;
-
-            currentTarget =
-                visibleTargets[
-                    selectedTargetIndex
-                ];
-
-            LockOn(currentTarget);
-        }
+        
     }
 
 
@@ -574,6 +579,63 @@ public class LockOnManager : MonoBehaviour
             return;
         }
     }
+
+private void UpdateOutlines()
+    {
+        if (!useOutline)
+            return;
+
+        // Which enemy gets the outline?
+        // - The enemy you selected with Q/E or locked onto.
+        // - If nothing is selected yet, the enemy that Tab would lock onto.
+        LockOnTarget highlighted = currentTarget;
+
+        
+
+        // Make sure every visible enemy has an outline component.
+        foreach (LockOnTarget target in visibleTargets)
+        {
+            if (target == null || outlines.ContainsKey(target))
+                continue;
+
+            LockOnOutline outline = target.GetComponent<LockOnOutline>();
+
+            if (outline == null)
+                outline = target.gameObject.AddComponent<LockOnOutline>();
+
+            outlines.Add(target, outline);
+        }
+
+        // Update every enemy we know about (this also clears the outline
+        // of enemies that are no longer selected or no longer visible).
+        outlineScratch.Clear();
+        outlineScratch.AddRange(outlines.Keys);
+
+        foreach (LockOnTarget target in outlineScratch)
+        {
+            LockOnOutline outline = outlines[target];
+
+            if (target == null || outline == null)
+            {
+                outlines.Remove(target);
+                continue;
+            }
+
+            if (target == highlighted)
+            {
+                outline.SetState(
+                    IsLockedOn
+                        ? LockOnOutline.State.Locked
+                        : LockOnOutline.State.Selected
+                );
+            }
+            else
+            {
+                outline.SetState(LockOnOutline.State.None);
+            }
+        }
+    }
+
 
 
     // =========================================================

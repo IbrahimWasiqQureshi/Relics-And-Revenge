@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.AI;
+using System.Collections;
 
 public class KnightEnemyAI : MonoBehaviour
 {
@@ -35,6 +36,13 @@ public class KnightEnemyAI : MonoBehaviour
     private bool isAttacking;
     private bool isBeingHit;
     private bool returningToStart;
+
+    [Header("Hit Knockback")]
+    [SerializeField] private float knockbackDistance = 1.2f;
+    [SerializeField] private float knockbackDuration = 0.2f;
+    [SerializeField] private float hitStunTime = 0.8f;
+
+    private Coroutine knockbackCoroutine;
 
 
     // =========================================================
@@ -375,6 +383,58 @@ public class KnightEnemyAI : MonoBehaviour
         animator.ResetTrigger("Hit");
 
         animator.SetTrigger("Hit");
+
+
+        // Move slightly backward.
+        if (knockbackCoroutine != null)
+            StopCoroutine(knockbackCoroutine);
+
+        knockbackCoroutine = StartCoroutine(KnockbackRoutine());
+    }
+
+
+    // =========================================================
+    // KNOCKBACK
+    // =========================================================
+
+    private IEnumerator KnockbackRoutine()
+    {
+        FacePlayerInstant();
+
+        Vector3 startPosition = transform.position;
+        Vector3 targetPosition =
+            startPosition - transform.forward * knockbackDistance;
+
+        float elapsed = 0f;
+
+        while (elapsed < knockbackDuration && !isDead)
+        {
+            elapsed += Time.deltaTime;
+
+            float t = Mathf.Clamp01(elapsed / knockbackDuration);
+
+            Vector3 nextPosition = Vector3.Lerp(
+                startPosition,
+                targetPosition,
+                t
+            );
+
+            if (agent != null && agent.enabled && agent.isOnNavMesh)
+                agent.Move(nextPosition - transform.position);
+            else
+                transform.position = nextPosition;
+
+            yield return null;
+        }
+
+        float wait = Mathf.Max(0f, hitStunTime - knockbackDuration);
+
+        yield return new WaitForSeconds(wait);
+
+        if (!isDead && isBeingHit)
+            HitFinished();
+
+        knockbackCoroutine = null;
     }
 
 
@@ -620,6 +680,12 @@ public class KnightEnemyAI : MonoBehaviour
         returningToStart = false;
 
         DisableWeapon();
+
+        if (knockbackCoroutine != null)
+        {
+            StopCoroutine(knockbackCoroutine);
+            knockbackCoroutine = null;
+        }
 
         // Stop NavMesh
         if (agent != null && agent.enabled)

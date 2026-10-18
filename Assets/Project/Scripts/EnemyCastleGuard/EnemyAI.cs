@@ -1,5 +1,7 @@
+
 using UnityEngine;
 using UnityEngine.AI;
+using System.Collections;
 
 public class EnemyAI : MonoBehaviour
 {
@@ -22,6 +24,18 @@ public class EnemyAI : MonoBehaviour
 
     private bool isDead = false;
     private bool isAttacking = false;
+    private bool isBeingKnockedBack = false;
+
+    //=================================================
+    // KNOCKBACK SETTINGS
+    //=================================================
+
+    [Header("Hit Knockback")]
+    [SerializeField] private float knockbackDistance = 1.2f;
+    [SerializeField] private float knockbackDuration = 0.2f;
+    [SerializeField] private float hitRotationSpeed = 8f;
+
+    private Coroutine knockbackCoroutine;
 
     //=================================================
     // PATROL
@@ -31,7 +45,6 @@ public class EnemyAI : MonoBehaviour
     [SerializeField] private Transform[] patrolPoints = new Transform[2];
 
     [SerializeField] private float patrolWaitTime = 2f;
-
     [SerializeField] private float patrolRotationSpeed = 8f;
 
     private int currentPatrolPoint = 0;
@@ -65,14 +78,14 @@ public class EnemyAI : MonoBehaviour
         if (isDead || player == null)
             return;
 
+        // Do not let normal AI movement override knockback.
+        if (isBeingKnockedBack)
+            return;
+
         float distance = Vector3.Distance(
             transform.position,
             player.position
         );
-
-        //-------------------------------------------------
-        // OUTSIDE DETECTION RANGE → PATROL
-        //-------------------------------------------------
 
         if (distance > detectionRange)
         {
@@ -80,13 +93,10 @@ public class EnemyAI : MonoBehaviour
             return;
         }
 
-        //-------------------------------------------------
-        // ATTACK
-        //-------------------------------------------------
-
         if (distance <= attackRange)
         {
             agent.ResetPath();
+            agent.isStopped = true;
 
             FacePlayer();
 
@@ -100,14 +110,9 @@ public class EnemyAI : MonoBehaviour
             return;
         }
 
-        //-------------------------------------------------
-        // CHASE
-        //-------------------------------------------------
-
         if (!isAttacking)
         {
             agent.isStopped = false;
-
             agent.SetDestination(player.position);
 
             animator.SetFloat(
@@ -139,8 +144,9 @@ public class EnemyAI : MonoBehaviour
         if (targetPoint == null)
             return;
 
-        // Direction toward patrol point
-        Vector3 direction = targetPoint.position - transform.position;
+        Vector3 direction =
+            targetPoint.position - transform.position;
+
         direction.y = 0f;
 
         if (direction.sqrMagnitude > 0.01f)
@@ -148,7 +154,6 @@ public class EnemyAI : MonoBehaviour
             Quaternion targetRotation =
                 Quaternion.LookRotation(direction);
 
-            // Rotate first
             transform.rotation = Quaternion.Slerp(
                 transform.rotation,
                 targetRotation,
@@ -156,25 +161,19 @@ public class EnemyAI : MonoBehaviour
             );
         }
 
-        // Check how closely we're facing the patrol point
         float angle = Vector3.Angle(
             transform.forward,
             direction.normalized
         );
 
-        // Still turning
         if (angle > 5f)
         {
             agent.isStopped = true;
-
             animator.SetFloat("Speed", 0);
-
             return;
         }
 
-        // Now walk toward patrol point
         agent.isStopped = false;
-
         agent.SetDestination(targetPoint.position);
 
         animator.SetFloat(
@@ -182,12 +181,10 @@ public class EnemyAI : MonoBehaviour
             agent.velocity.magnitude
         );
 
-        // Reached patrol point
         if (!agent.pathPending &&
             agent.remainingDistance <= agent.stoppingDistance)
         {
             agent.isStopped = true;
-
             animator.SetFloat("Speed", 0);
 
             patrolWaitTimer += Time.deltaTime;
@@ -201,6 +198,10 @@ public class EnemyAI : MonoBehaviour
 
                 patrolWaitTimer = 0f;
             }
+        }
+        else
+        {
+            patrolWaitTimer = 0f;
         }
     }
 
@@ -226,12 +227,14 @@ public class EnemyAI : MonoBehaviour
 
     public void EnableWeapon()
     {
-        weaponCollider.EnableWeapon();
+        if (weaponCollider != null)
+            weaponCollider.EnableWeapon();
     }
 
     public void DisableWeapon()
     {
-        weaponCollider.DisableWeapon();
+        if (weaponCollider != null)
+            weaponCollider.DisableWeapon();
     }
 
     //=================================================
@@ -242,7 +245,8 @@ public class EnemyAI : MonoBehaviour
     {
         isAttacking = false;
 
-        agent.isStopped = false;
+        if (!isDead && !isBeingKnockedBack && agent.enabled)
+            agent.isStopped = false;
     }
 
     //=================================================
@@ -251,10 +255,13 @@ public class EnemyAI : MonoBehaviour
 
     void FacePlayer()
     {
+        if (player == null)
+            return;
+
         Vector3 direction =
             player.position - transform.position;
 
-        direction.y = 0;
+        direction.y = 0f;
 
         if (direction.sqrMagnitude < 0.001f)
             return;
@@ -262,12 +269,104 @@ public class EnemyAI : MonoBehaviour
         Quaternion rotation =
             Quaternion.LookRotation(direction);
 
-        transform.rotation =
-            Quaternion.Slerp(
-                transform.rotation,
-                rotation,
-                8f * Time.deltaTime
+        transform.rotation = Quaternion.Slerp(
+            transform.rotation,
+            rotation,
+            8f * Time.deltaTime
+        );
+    }
+
+    //=================================================
+    // HIT / KNOCKBACK
+    //=================================================
+
+    public void TakeHit()
+    {
+        if (isDead || isBeingKnockedBack)
+            return;
+
+        if (knockbackCoroutine != null)
+            StopCoroutine(knockbackCoroutine);
+
+        knockbackCoroutine = StartCoroutine(KnockbackRoutine());
+    }
+
+    IEnumerator KnockbackRoutine()
+    {
+        isBeingKnockedBack = true;
+        isAttacking = false;
+
+        DisableWeapon();
+
+        // Stop NavMesh movement so it does not fight knockback.
+        if (agent != null && agent.enabled)
+        {
+            agent.isStopped = true;
+            agent.ResetPath();
+        }
+
+        // Face the player before being pushed away from them.
+        if (player != null)
+        {
+            Vector3 toPlayer = player.position - transform.position;
+            toPlayer.y = 0f;
+
+            if (toPlayer.sqrMagnitude > 0.001f)
+            {
+                transform.rotation =
+                    Quaternion.LookRotation(toPlayer);
+            }
+        }
+
+        // Play the hit animation.
+        animator.ResetTrigger("Attack");
+        animator.ResetTrigger("Hit");
+        animator.SetTrigger("Hit");
+
+        // Move backward relative to the enemy's facing direction.
+        Vector3 startPosition = transform.position;
+        Vector3 backwardDirection = -transform.forward;
+
+        Vector3 targetPosition =
+            startPosition + backwardDirection * knockbackDistance;
+
+        float elapsed = 0f;
+
+        while (elapsed < knockbackDuration && !isDead)
+        {
+            elapsed += Time.deltaTime;
+
+            float t = Mathf.Clamp01(elapsed / knockbackDuration);
+
+            Vector3 nextPosition = Vector3.Lerp(
+                startPosition,
+                targetPosition,
+                t
             );
+
+            // Keep movement on the NavMesh when possible.
+            if (agent != null && agent.enabled &&
+                agent.isOnNavMesh)
+            {
+                agent.Move(nextPosition - transform.position);
+            }
+            else
+            {
+                transform.position = nextPosition;
+            }
+
+            yield return null;
+        }
+
+        if (!isDead)
+        {
+            isBeingKnockedBack = false;
+
+            if (agent != null && agent.enabled)
+                agent.isStopped = false;
+        }
+
+        knockbackCoroutine = null;
     }
 
     //=================================================
@@ -277,9 +376,22 @@ public class EnemyAI : MonoBehaviour
     public void Die()
     {
         isDead = true;
+        isBeingKnockedBack = false;
 
-        agent.isStopped = true;
-        agent.enabled = false;
+        if (knockbackCoroutine != null)
+        {
+            StopCoroutine(knockbackCoroutine);
+            knockbackCoroutine = null;
+        }
+
+        DisableWeapon();
+
+        if (agent != null && agent.enabled)
+        {
+            agent.isStopped = true;
+            agent.ResetPath();
+            agent.enabled = false;
+        }
     }
 
     //=================================================
@@ -289,7 +401,6 @@ public class EnemyAI : MonoBehaviour
     public void InterruptAttack()
     {
         isAttacking = false;
-
         DisableWeapon();
     }
 }

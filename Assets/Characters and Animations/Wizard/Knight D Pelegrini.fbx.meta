@@ -5,11 +5,6 @@ ModelImporter:
   internalIDToNameTable: []
   externalObjects:
   - first:
-      type: UnityEngine:Material
-      assembly: UnityEngine.CoreModule
-      name: Knight_MAT2
-    second: {fileID: 2100000, guid: a7f39ca40b210744bbbd0a52b30279fd, type: 2}
-  - first:
       type: UnityEngine:Texture2D
       assembly: UnityEngine.CoreModule
       name: Knight_diffuse

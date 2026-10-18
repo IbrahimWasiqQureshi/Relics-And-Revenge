@@ -69,10 +69,10 @@ public class PlayerController : MonoBehaviour
     // DODGE
     // =========================================================
 
-    
+
 
     private LockOnManager lockOnManager;
-public bool isDodging;
+    public bool isDodging;
 
 
     // =========================================================
@@ -238,7 +238,7 @@ public bool isDodging;
     // DODGE
     // =========================================================
 
-private void Dodge()
+    private void Dodge()
     {
         if (Input.GetKeyDown(KeyCode.LeftAlt) &&
             playerAnim.GetBool("Grounded"))
@@ -371,7 +371,7 @@ private void Dodge()
     // CANCEL ACTIONS WHEN HIT
     // =========================================================
 
-public void CancelActionStates()
+    public void CancelActionStates()
     {
         isEquipping = false;
         isAttacking = false;
@@ -390,7 +390,7 @@ public void CancelActionStates()
         isDodging = false;
     }
 
-    
+
     public void EnableTrail()
     {
         trail.gameObject.SetActive(true);
