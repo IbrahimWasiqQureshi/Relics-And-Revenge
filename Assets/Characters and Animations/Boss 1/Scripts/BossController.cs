@@ -36,6 +36,7 @@ public class BossAnimatorParams
 
     public string hitTrigger = "Hit";
     public string blockTrigger = "Block";
+    public string blockReactionTrigger = "BlockReaction";
 
     public string tauntTrigger = "Taunt";
 
@@ -98,6 +99,9 @@ public class BossController : MonoBehaviour
     [SerializeField] private float recoveryTime = 1f;
 
     [SerializeField] private float hitReactionDuration = 0.6f;
+
+    [Tooltip("How long the boss is dazed when the player's shield blocks his sword (sword blowback).")]
+    [SerializeField] private float blockReactionDuration = 0.6f;
 
     [SerializeField] private float knockbackDistance = 0.8f;
 
@@ -1227,6 +1231,48 @@ public class BossController : MonoBehaviour
             StopCoroutine(knockbackCoroutine);
 
         knockbackCoroutine = StartCoroutine(KnockbackRoutine());
+    }
+
+
+    // =========================================================
+    // SWORD BLOWBACK
+    // =========================================================
+    //
+    // Called when the player's shield blocks the boss's sword.
+    // Plays the "Block reaction" animation and dazes the boss briefly.
+    //
+
+    private float lastBlockReactionTime = -10f;
+
+    public void NotifyBlocked()
+    {
+        if (state == BossState.Dead)
+            return;
+
+        if (state == BossState.Blocking)
+            return;
+
+        if (Time.time - lastBlockReactionTime < 0.5f)
+            return;
+
+        lastBlockReactionTime = Time.time;
+
+        DisableWeapon();
+
+        StopMovement();
+
+        hasRunAttackTarget = false;
+
+        state =
+            BossState.Hit;
+
+        BeginLock(
+            blockReactionDuration
+        );
+
+        SafeSetTrigger(
+            paramNames.blockReactionTrigger
+        );
     }
 
 

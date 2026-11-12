@@ -16,6 +16,12 @@ public class PlayerHealth : MonoBehaviour, IDamageable
 
     private bool isInvincible = false;
 
+    [Header("Block")]
+    [Tooltip("Invincible time after a blocked hit, so one swing is only blocked once.")]
+    [SerializeField] private float blockInvincibleTime = 0.5f;
+    [Tooltip("How long the block recoil animation is allowed to play before blocking resumes.")]
+    [SerializeField] private float blockRecoilTime = 0.7f;
+
     private Animator animator;
 
     [SerializeField] private SkinnedMeshRenderer playerRenderer;
@@ -62,7 +68,7 @@ public class PlayerHealth : MonoBehaviour, IDamageable
             playerController.isBlocking &&
             ShieldBlock.IsBlocking)
         {
-            Debug.Log("Attack Blocked");
+            OnBlockedHit();
             return;
         }
 
@@ -86,6 +92,9 @@ public class PlayerHealth : MonoBehaviour, IDamageable
         healthBar.SetHealth(currentHealth);
 
         Debug.Log("Player HP: " + currentHealth);
+
+        if (CameraShake.Instance != null)
+            CameraShake.Instance.ShakeOnDamage();
 
         // =====================================================
         // DEATH
@@ -119,6 +128,52 @@ public class PlayerHealth : MonoBehaviour, IDamageable
         // =====================================================
 
         StartCoroutine(InvincibilityFrames());
+    }
+
+    // =========================================================
+    // BLOCKED HIT
+    // =========================================================
+
+    public void OnBlockedHit()
+    {
+        if (isDead || isInvincible)
+            return;
+
+        Debug.Log("Attack Blocked");
+
+        if (animator != null)
+        {
+            animator.SetBool("BlockRecoil", true);
+            animator.ResetTrigger("BlockHit");
+            animator.SetTrigger("BlockHit");
+        }
+
+        if (ShieldBlock.Instance != null)
+            ShieldBlock.Instance.PlayBlockSparks();
+
+        if (CameraShake.Instance != null)
+            CameraShake.Instance.ShakeOnBlock();
+
+        StartCoroutine(BlockInvincibility());
+    }
+
+    private IEnumerator BlockInvincibility()
+    {
+        isInvincible = true;
+
+        yield return new WaitForSeconds(blockInvincibleTime);
+
+        isInvincible = false;
+
+        float rest = blockRecoilTime - blockInvincibleTime;
+        if (rest > 0f)
+            yield return new WaitForSeconds(rest);
+
+        if (animator != null)
+        {
+            animator.SetBool("BlockRecoil", false);
+            animator.ResetTrigger("BlockHit");
+        }
     }
 
     // =========================================================

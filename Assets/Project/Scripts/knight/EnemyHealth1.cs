@@ -71,6 +71,19 @@ public class EnemyHealthKnight : MonoBehaviour, IDamageable
         // TELL AI ABOUT DAMAGE
         // =====================================================
 
+        if (currentHealth <= 0)
+        {
+            // Let go of the lock-on and hide the health bar right away
+            LockOnTarget lockOnTarget = GetComponent<LockOnTarget>();
+
+            if (lockOnTarget != null)
+                lockOnTarget.OnTargetDied();
+
+            if (healthBar != null)
+                healthBar.HideBar();
+        }
+
+
         if (enemyAI != null)
         {
             if (currentHealth <= 0)

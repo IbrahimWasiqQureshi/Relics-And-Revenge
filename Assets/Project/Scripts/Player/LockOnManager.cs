@@ -99,6 +99,9 @@ public class LockOnManager : MonoBehaviour
             if (!target.gameObject.activeInHierarchy)
                 continue;
 
+            if (target.IsDead)
+                continue;
+
             if (target.transform == player)
                 continue;
 
@@ -490,6 +493,17 @@ public class LockOnManager : MonoBehaviour
     // =========================================================
     // UNLOCK
     // =========================================================
+
+    // Called when an enemy dies: lets go of the lock if that enemy was the target
+    public void ReleaseIfTarget(LockOnTarget target)
+    {
+        if (target == null)
+            return;
+
+        if (currentTarget == target)
+            Unlock();
+    }
+
 
     public void Unlock()
     {

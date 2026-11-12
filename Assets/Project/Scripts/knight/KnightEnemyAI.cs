@@ -22,6 +22,19 @@ public class KnightEnemyAI : MonoBehaviour
     [Header("Rotation")]
     [SerializeField] private float facePlayerSpeed = 8f;
 
+    [Header("Movement")]
+    [SerializeField] private float moveSpeed = 0.9f;
+    [Tooltip("Ground speed (m/s) the walk animation covers at normal playback. The walk animation is sped up or slowed down to match the real speed, so his feet do not slide.")]
+    [SerializeField] private float walkAnimNaturalSpeed = 0.39f;
+    [Tooltip("The knight stops this close to the player (a little inside attack range) so he does not jitter at the edge of the range.")]
+    [SerializeField] private float stopDistance = 1.5f;
+    [Tooltip("How often the chase path is refreshed, in seconds.")]
+    [SerializeField] private float repathInterval = 0.2f;
+
+    private float nextRepathTime;
+    private bool holdingPosition;
+    private float attackStartTime;
+
     [Header("Death")]
     [SerializeField] private float destroyAfterDeath = 3f;
 
@@ -54,6 +67,12 @@ public class KnightEnemyAI : MonoBehaviour
         agent = GetComponent<NavMeshAgent>();
 
         animator = GetComponent<Animator>();
+
+        if (agent != null)
+        {
+            agent.speed = moveSpeed;
+            agent.stoppingDistance = Mathf.Min(stopDistance, attackRange);
+        }
 
         originalPosition = transform.position;
 
@@ -107,6 +126,20 @@ public class KnightEnemyAI : MonoBehaviour
 
         if (isAttacking)
         {
+            // Safety net: if the AttackFinished animation event never fires, end the attack
+            // once the animator is back in idle (or after a maximum time).
+            if (Time.time > attackStartTime + 0.3f)
+            {
+                AnimatorStateInfo state = animator.GetCurrentAnimatorStateInfo(0);
+
+                if ((!animator.IsInTransition(0) && state.IsName("idle")) ||
+                    Time.time > attackStartTime + 8f)
+                {
+                    AttackFinished();
+                    return;
+                }
+            }
+
             StopMovement();
 
             animator.SetFloat("Speed", 0f);
@@ -195,17 +228,34 @@ public class KnightEnemyAI : MonoBehaviour
 
         if (distance <= attackRange)
         {
+            bool canAttack = Time.time >= nextAttackTime;
+
+            // Waiting for the attack cooldown: keep closing in to the stop distance
+            // instead of stopping at the very edge of attack range (that made him
+            // stop and start every frame while the player moved).
+            if (!canAttack)
+            {
+                float resumeDistance = holdingPosition
+                    ? stopDistance + 0.3f
+                    : stopDistance;
+
+                if (distance > resumeDistance)
+                {
+                    holdingPosition = false;
+                    ChasePlayer();
+                    return;
+                }
+
+                holdingPosition = true;
+            }
+
             StopMovement();
 
-            animator.SetFloat(
-                "Speed",
-                0f
-            );
+            animator.SetFloat("Speed", 0f);
 
             FacePlayer();
 
-
-            if (Time.time >= nextAttackTime)
+            if (canAttack)
             {
                 Attack();
             }
@@ -213,12 +263,32 @@ public class KnightEnemyAI : MonoBehaviour
             return;
         }
 
+        holdingPosition = false;
+
 
         // =====================================================
         // CHASE
         // =====================================================
 
         ChasePlayer();
+    }
+
+
+    // =========================================================
+    // MOVE ANIMATION
+    // =========================================================
+
+    // Keeps the walk animation in sync with how fast the agent really moves
+    private void UpdateMoveAnimation()
+    {
+        float velocity = agent.velocity.magnitude;
+
+        animator.SetFloat("Speed", velocity, 0.1f, Time.deltaTime);
+
+        animator.SetFloat(
+            "WalkAnimSpeed",
+            Mathf.Clamp(velocity / Mathf.Max(0.05f, walkAnimNaturalSpeed), 0.6f, 2.4f)
+        );
     }
 
 
@@ -236,15 +306,13 @@ public class KnightEnemyAI : MonoBehaviour
 
         agent.isStopped = false;
 
-        agent.SetDestination(
-            player.position
-        );
+        if (Time.time >= nextRepathTime || !agent.hasPath)
+        {
+            agent.SetDestination(player.position);
+            nextRepathTime = Time.time + repathInterval;
+        }
 
-
-        animator.SetFloat(
-            "Speed",
-            agent.desiredVelocity.magnitude
-        );
+        UpdateMoveAnimation();
     }
 
 
@@ -271,10 +339,7 @@ public class KnightEnemyAI : MonoBehaviour
         );
 
 
-        animator.SetFloat(
-            "Speed",
-            agent.desiredVelocity.magnitude
-        );
+        UpdateMoveAnimation();
     }
 
 
@@ -317,10 +382,7 @@ public class KnightEnemyAI : MonoBehaviour
         );
 
 
-        animator.SetFloat(
-            "Speed",
-            agent.desiredVelocity.magnitude
-        );
+        UpdateMoveAnimation();
     }
 
 
@@ -481,6 +543,7 @@ public class KnightEnemyAI : MonoBehaviour
 
 
         isAttacking = true;
+        attackStartTime = Time.time;
 
 
         StopMovement();

@@ -11,6 +11,14 @@ public class CameraShake : MonoBehaviour
     public float frequency = 2f;
     public NoiseSettings noiseProfile;
 
+    [Header("Shake presets (power, seconds)")]
+    [Tooltip("Small shake when your sword hits an enemy.")]
+    public Vector2 onHit = new Vector2(0.35f, 0.12f);
+    [Tooltip("Medium shake when your shield blocks an attack.")]
+    public Vector2 onBlock = new Vector2(0.9f, 0.2f);
+    [Tooltip("Strong shake when you take damage.")]
+    public Vector2 onDamage = new Vector2(1.3f, 0.3f);
+
     CinemachineBasicMultiChannelPerlin noise;
     float baseAmplitude;
     float baseFrequency;
@@ -32,6 +40,10 @@ public class CameraShake : MonoBehaviour
         baseFrequency = noise.FrequencyGain;
         return true;
     }
+
+    public void ShakeOnHit() { Shake(onHit.x, onHit.y); }
+    public void ShakeOnBlock() { Shake(onBlock.x, onBlock.y); }
+    public void ShakeOnDamage() { Shake(onDamage.x, onDamage.y); }
 
     public void Shake()
     {

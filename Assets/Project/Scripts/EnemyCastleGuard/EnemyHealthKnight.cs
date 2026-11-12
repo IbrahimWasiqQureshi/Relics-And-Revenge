@@ -74,6 +74,12 @@ public class EnemyHealth : MonoBehaviour, IDamageable
     {
         isDead = true;
 
+        // Let go of the lock-on right away
+        LockOnTarget lockOnTarget = GetComponent<LockOnTarget>();
+
+        if (lockOnTarget != null)
+            lockOnTarget.OnTargetDied();
+
         animator.ResetTrigger("Death");
         animator.SetTrigger("Death");
 
@@ -85,8 +91,9 @@ public class EnemyHealth : MonoBehaviour, IDamageable
         if (ai != null)
             ai.Die();
 
+        // Health bar disappears right away
         if (healthBar != null)
-            healthBar.HideBarDelayed(2f);
+            healthBar.HideBar();
 
         Destroy(gameObject, destroyAfter);
     }

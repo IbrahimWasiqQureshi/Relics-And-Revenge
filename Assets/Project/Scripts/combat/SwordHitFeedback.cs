@@ -33,6 +33,9 @@ public class SwordHitFeedback : MonoBehaviour
         IDamageable damageable = other.GetComponentInParent<IDamageable>();
         if (damageable == null) return;
 
+        if (CameraShake.Instance != null)
+            CameraShake.Instance.ShakeOnHit();
+
         if (enableHitFlash)
         {
             MonoBehaviour mb = damageable as MonoBehaviour;

@@ -11,7 +11,7 @@ namespace StarterAssets
 {
     [RequireComponent(typeof(CharacterController))]
 #if ENABLE_INPUT_SYSTEM
-    [RequireComponent(typeof(PlayerInput))]
+    [RequireComponent(typeof(UnityEngine.InputSystem.PlayerInput))]
 #endif
     public class ThirdPersonController : MonoBehaviour
     {
@@ -29,6 +29,19 @@ namespace StarterAssets
         public float RotationSmoothTime = 0.12f;
 
         public float SpeedChangeRate = 10.0f;
+
+
+        // =========================================================
+        // BLOCKING
+        // =========================================================
+
+        [Header("Blocking")]
+
+        [Tooltip("How fast the player can turn while holding block, in degrees per second. 0 = cannot turn while blocking.")]
+        public float BlockRotationSpeed = 75f;
+
+        [Tooltip("Largest turn allowed away from the direction the player was facing when block started, in degrees. 0 = no limit.")]
+        public float BlockMaxTurnAngle = 60f;
 
 
         // =========================================================
@@ -151,6 +164,8 @@ namespace StarterAssets
         private float _targetRotation;
 
         private float _rotationVelocity;
+        private bool _wasBlocking;
+        private float _blockStartYaw;
 
         private float _verticalVelocity;
 
@@ -192,7 +207,7 @@ namespace StarterAssets
         // =========================================================
 
 #if ENABLE_INPUT_SYSTEM
-        private PlayerInput _playerInput;
+        private UnityEngine.InputSystem.PlayerInput _playerInput;
 #endif
 
         private Animator _animator;
@@ -299,7 +314,7 @@ private LockOnManager lockOnManager;
 
 #if ENABLE_INPUT_SYSTEM
             _playerInput =
-                GetComponent<PlayerInput>();
+                GetComponent<UnityEngine.InputSystem.PlayerInput>();
 #else
             Debug.LogError(
                 "Starter Assets package is missing dependencies."
@@ -668,6 +683,21 @@ private void LockOnCameraRotation()
             // OTHER ACTION LOCKS
             // =====================================================
 
+            if (!playerController.isBlocking)
+            {
+                _wasBlocking = false;
+            }
+
+            if (playerController.isBlocking &&
+                !playerController.isEquipping &&
+                !playerController.isKicking &&
+                !playerController.isDodging)
+            {
+                RotateWhileBlocking();
+
+                return;
+            }
+
             if (playerController.isEquipping ||
                 playerController.isBlocking ||
                 playerController.isKicking ||
@@ -694,6 +724,100 @@ private void LockOnCameraRotation()
             // =====================================================
 
             MoveNormally();
+        }
+
+
+        // =========================================================
+        // ROTATE WHILE BLOCKING
+        // =========================================================
+        //
+        // The player stays in place while blocking but can turn a little
+        // (A / D, or toward the lock-on target) so they can face enemies
+        // on their left or right. Speed and angle are set in the Inspector.
+        //
+
+        private void RotateWhileBlocking()
+        {
+            if (!_wasBlocking)
+            {
+                _wasBlocking = true;
+
+                _blockStartYaw = transform.eulerAngles.y;
+            }
+
+            if (BlockRotationSpeed <= 0f)
+                return;
+
+            float currentYaw = transform.eulerAngles.y;
+
+            float newYaw = currentYaw;
+
+            if (IsLockedOn())
+            {
+                Transform target =
+                    lockOnManager.currentTarget.targetPoint != null
+                        ? lockOnManager.currentTarget.targetPoint
+                        : lockOnManager.currentTarget.transform;
+
+                Vector3 direction =
+                    target.position - transform.position;
+
+                direction.y = 0f;
+
+                if (direction.sqrMagnitude < 0.001f)
+                    return;
+
+                float targetYaw =
+                    Mathf.Atan2(direction.x, direction.z) *
+                    Mathf.Rad2Deg;
+
+                newYaw =
+                    Mathf.MoveTowardsAngle(
+                        currentYaw,
+                        targetYaw,
+                        BlockRotationSpeed * Time.deltaTime
+                    );
+            }
+            else if (Mathf.Abs(_input.move.x) > 0.1f)
+            {
+                newYaw =
+                    currentYaw +
+                    _input.move.x *
+                    BlockRotationSpeed *
+                    Time.deltaTime;
+            }
+            else
+            {
+                return;
+            }
+
+            if (BlockMaxTurnAngle > 0f)
+            {
+                float offset =
+                    Mathf.DeltaAngle(
+                        _blockStartYaw,
+                        newYaw
+                    );
+
+                offset =
+                    Mathf.Clamp(
+                        offset,
+                        -BlockMaxTurnAngle,
+                        BlockMaxTurnAngle
+                    );
+
+                newYaw = _blockStartYaw + offset;
+            }
+
+            transform.rotation =
+                Quaternion.Euler(
+                    0f,
+                    newYaw,
+                    0f
+                );
+
+            // Keep the movement direction in sync so nothing snaps when block ends
+            _targetRotation = newYaw;
         }
 
 

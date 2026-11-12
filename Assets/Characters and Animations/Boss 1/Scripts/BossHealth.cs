@@ -181,6 +181,12 @@ public class BossHealth : MonoBehaviour, IDamageable
 
         isDead = true;
 
+        // Let go of the lock-on right away (the boss health bar keeps its own delay)
+        LockOnTarget lockOnTarget = GetComponent<LockOnTarget>();
+
+        if (lockOnTarget != null)
+            lockOnTarget.OnTargetDied();
+
         currentHealth = 0;
 
 

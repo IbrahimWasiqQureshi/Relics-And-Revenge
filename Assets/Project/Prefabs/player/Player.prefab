@@ -9697,6 +9697,9 @@ GameObject:
   - component: {fileID: 5349002817676930594}
   - component: {fileID: 4157484028776014922}
   - component: {fileID: 8640903117460243515}
+  - component: {fileID: 3696510268295682891}
+  - component: {fileID: 5739093937717496998}
+  - component: {fileID: 6089175438163235412}
   m_Layer: 8
   m_Name: 'SwordHitbox '
   m_TagString: Untagged
@@ -9793,6 +9796,61 @@ Rigidbody:
   m_Interpolate: 0
   m_Constraints: 0
   m_CollisionDetection: 0
+--- !u!114 &3696510268295682891
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5703801161535612987}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3487616c5aabd414bb038247492fccaa, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SwordBloodEffect
+  bloodPrefab: {fileID: 3298783640790515704, guid: 89c4e993be044b64b88dcda2d60fa7b1, type: 3}
+  cleanupDelay: 8
+  upwardBias: 0.35
+  spawnOffset: {x: 0, y: 0, z: 0}
+  perTargetCooldown: 0.35
+  targetTag: Enemy
+--- !u!114 &5739093937717496998
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5703801161535612987}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c177d353e3eb31c479bdf64b6d8bd225, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SwordHitFeedback
+  enableHitFlash: 1
+  flashColor: {r: 1, g: 1, b: 1, a: 1}
+  flashDuration: 0.1
+  flashMaterial: {fileID: 2100000, guid: f9077d445fb793f45b34c2421872763c, type: 2}
+  enableHitStop: 1
+  hitStopDuration: 0.07
+  hitStopTimeScale: 0.05
+  targetTag: Enemy
+--- !u!114 &6089175438163235412
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5703801161535612987}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 91cf15f360d8b6f45bce8832657c2d6d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SwordClashSparks
+  sparks: {fileID: 1559216468072176890, guid: c483142edbf33dc4d9014c13724a0175, type: 3}
+  sparkOffset: {x: 0, y: 0, z: 0}
+  cooldown: 0.2
+  cleanupDelay: 3
+  enemyWeaponTag: EnemyWeapon
 --- !u!1 &5821859559626421071
 GameObject:
   m_ObjectHideFlags: 0
@@ -11419,8 +11477,8 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 0
   serializedVersion: 3
-  m_Size: {x: 0.66625893, y: 0.054863572, z: 0.8350531}
-  m_Center: {x: -0.0059202025, y: 0.004826451, z: -0.034202192}
+  m_Size: {x: 0.94681364, y: 0.054863572, z: 1.3956594}
+  m_Center: {x: 0.026159657, y: 0.0048264354, z: -0.015443696}
 --- !u!114 &1315063198574401947
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -11428,11 +11486,16 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 7124903172339727824}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d7a8956ebb378b1489a25eb349b450f5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ShieldBlock
+  sparks: {fileID: 1559216468072176890, guid: c483142edbf33dc4d9014c13724a0175, type: 3}
+  sparkSize: 0.6
+  sparkOffset: {x: 0, y: 0, z: 0}
+  cleanupDelay: 1
+  enemyWeaponTag: EnemyWeapon
 --- !u!1 &7347046356996664640
 GameObject:
   m_ObjectHideFlags: 0
@@ -11765,6 +11828,8 @@ MonoBehaviour:
   SprintSpeed: 5.335
   RotationSmoothTime: 0.12
   SpeedChangeRate: 10
+  BlockRotationSpeed: 75
+  BlockMaxTurnAngle: 60
   LockOnRotationSpeed: 12
   LockOnAnimationDampTime: 0.15
   LockOnCameraSpeed: 5
@@ -11988,7 +12053,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlayerHealth
   healthBar: {fileID: 0}
   maxHealth: 100
-  invincibleTime: 0.3
+  invincibleTime: 1
+  blockInvincibleTime: 1
+  blockRecoilTime: 0.7
   playerRenderer: {fileID: 8432879362599575544}
 --- !u!54 &1477846159278858435
 Rigidbody:
