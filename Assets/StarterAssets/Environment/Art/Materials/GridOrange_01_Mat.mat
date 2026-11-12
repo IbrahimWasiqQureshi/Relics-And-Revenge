@@ -14,7 +14,6 @@ Material:
   m_ValidKeywords:
   - _EMISSION
   - _GLOSSYREFLECTIONS_OFF
-  - _NORMALMAP
   m_InvalidKeywords:
   - _ENVIRONMENTREFLECTIONS_OFF
   m_LightmapFlags: 2
